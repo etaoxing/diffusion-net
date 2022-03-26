@@ -273,7 +273,7 @@ def build_grad(verts, edges, edge_tangent_vectors):
     return mat
 
 
-def compute_operators(verts, faces, k_eig, normals=None):
+def compute_operators(verts, faces, k_eig, normals=None, build_gradients=True):
     """
     Builds spectral operators for a mesh/point cloud. Constructs mass matrix, eigenvalues/vectors for Laplacian, and gradient matrix.
 
@@ -366,28 +366,35 @@ def compute_operators(verts, faces, k_eig, normals=None):
         evecs_np = np.zeros((verts.shape[0],0))
 
 
-    # == Build gradient matrices
+    if build_gradients:
 
-    # For meshes, we use the same edges as were used to build the Laplacian. For point clouds, use a whole local neighborhood
-    if is_cloud:
-        grad_mat_np = build_grad_point_cloud(verts, frames)
-    else:
-        edges = torch.tensor(np.stack((inds_row, inds_col), axis=0), device=device, dtype=faces.dtype)
-        edge_vecs = edge_tangent_vectors(verts, frames, edges)
-        grad_mat_np = build_grad(verts, edges, edge_vecs)
+        # == Build gradient matrices
+
+        # For meshes, we use the same edges as were used to build the Laplacian. For point clouds, use a whole local neighborhood
+        if is_cloud:
+            grad_mat_np = build_grad_point_cloud(verts, frames)
+        else:
+            edges = torch.tensor(np.stack((inds_row, inds_col), axis=0), device=device, dtype=faces.dtype)
+            edge_vecs = edge_tangent_vectors(verts, frames, edges)
+            grad_mat_np = build_grad(verts, edges, edge_vecs)
 
 
-    # Split complex gradient in to two real sparse mats (torch doesn't like complex sparse matrices)
-    gradX_np = np.real(grad_mat_np)
-    gradY_np = np.imag(grad_mat_np)
+        # Split complex gradient in to two real sparse mats (torch doesn't like complex sparse matrices)
+        gradX_np = np.real(grad_mat_np)
+        gradY_np = np.imag(grad_mat_np)
     
+        gradX = utils.sparse_np_to_torch(gradX_np).to(device=device, dtype=dtype)
+        gradY = utils.sparse_np_to_torch(gradY_np).to(device=device, dtype=dtype)
+
+    else:
+        gradX = torch.tensor([])
+        gradY = torch.tensor([])
+
     # === Convert back to torch
     massvec = torch.from_numpy(massvec_np).to(device=device, dtype=dtype)
     L = utils.sparse_np_to_torch(L).to(device=device, dtype=dtype)
     evals = torch.from_numpy(evals_np).to(device=device, dtype=dtype)
     evecs = torch.from_numpy(evecs_np).to(device=device, dtype=dtype)
-    gradX = utils.sparse_np_to_torch(gradX_np).to(device=device, dtype=dtype)
-    gradY = utils.sparse_np_to_torch(gradY_np).to(device=device, dtype=dtype)
 
     return frames, massvec, L, evals, evecs, gradX, gradY
 
